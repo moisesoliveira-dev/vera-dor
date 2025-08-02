@@ -1,15 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WebhookMessageData } from '../interfaces/webhook.interface';
+import { ContactService } from './contact.service';
+import { MessageService } from './message.service';
+import { messagesConfig } from '../config/messages.config';
 
 @Injectable()
 export class ChatbotService {
     private readonly logger = new Logger(ChatbotService.name);
 
+    constructor(
+        private readonly contactService: ContactService,
+        private readonly messageService: MessageService,
+    ) { }
+
     /**
      * Processa uma mensagem recebida via webhook
      */
     async processMessage(messageData: WebhookMessageData): Promise<void> {
-        this.logger.log(`Processando mensagem de ${messageData.contact.name}`);
+        this.logger.log(`Processando mensagem de ${messageData.contact.name} (contactId: ${messageData.contactId})`);
+
+        // Filtro de teste - apenas processa mensagens do contato de teste
+        if (messageData.contactId !== messagesConfig.testContactId) {
+            this.logger.log(`Mensagem ignorada - contactId ${messageData.contactId} não é o ID de teste (${messagesConfig.testContactId})`);
+            return;
+        }
 
         // Ignora mensagens enviadas pelo próprio bot
         if (messageData.fromMe) {
@@ -17,16 +31,84 @@ export class ChatbotService {
             return;
         }
 
-        // Extrai informações principais da mensagem
-        const messageInfo = this.extractMessageInfo(messageData);
+        // Verifica se a mensagem deve ser processada
+        if (!this.shouldProcessMessage(messageData)) {
+            this.logger.log('Mensagem ignorada - não atende critérios de processamento');
+            return;
+        }
 
-        this.logger.log('Dados extraídos da mensagem:', JSON.stringify(messageInfo, null, 2));
+        try {
+            // Busca ou cria o contato no banco de dados
+            const contact = await this.findOrCreateContact(messageData);
 
-        // Aqui você pode implementar a lógica do chatbot
-        // Por enquanto apenas logamos os dados mapeados
+            // Verifica se deve processar a mensagem baseado no status do contato
+            const shouldProcess = await this.contactService.shouldProcessMessage(messageData.contactId);
+            if (!shouldProcess) {
+                this.logger.log('Mensagem não processada - contato em atendimento ou chatbot pausado');
+                return;
+            }
+
+            // Atualiza a última mensagem do contato
+            await this.contactService.updateLastMessage(messageData.contactId, messageData.body);
+
+            // Se é um novo contato, envia mensagem de boas-vindas
+            if (!contact) {
+                this.logger.log('Enviando mensagem de boas-vindas para novo contato');
+                await this.messageService.sendWelcomeMessage(messageData.ticketId);
+            } else {
+                this.logger.log('Contato já existe - mensagem processada e salva');
+            }
+
+            // Extrai informações principais da mensagem para log
+            const messageInfo = this.extractMessageInfo(messageData);
+            this.logger.log('Dados processados:', JSON.stringify(messageInfo, null, 2));
+
+        } catch (error) {
+            this.logger.error('Erro ao processar mensagem:', error);
+
+            // Envia mensagem de erro em caso de falha
+            try {
+                await this.messageService.sendErrorMessage(messageData.ticketId);
+            } catch (sendError) {
+                this.logger.error('Erro ao enviar mensagem de erro:', sendError);
+            }
+        }
     }
 
     /**
+     * Busca um contato existente ou cria um novo
+     */
+    private async findOrCreateContact(messageData: WebhookMessageData): Promise<boolean> {
+        const existingContact = await this.contactService.findByContactId(messageData.contactId);
+
+        if (existingContact) {
+            this.logger.log(`Contato existente encontrado: ${existingContact.nome}`);
+            return true; // Contato já existe
+        }
+
+        // Cria novo contato
+        this.logger.log('Criando novo contato no banco de dados');
+
+        const newContact = {
+            contactid: messageData.contactId,
+            ticketid: messageData.ticketId,
+            nome: messageData.contact.name,
+            numero: messageData.contact.number,
+            body: messageData.body,
+            mediatype: messageData.mediaType,
+            mediapath: messageData.mediaPath || undefined,
+            lastmessage: messageData.body,
+            ematendimento: false,
+            finalizoutriagem: false,
+            stopchatbot: false,
+            pararmensagem: false,
+            mensagem_invalida: false,
+            state: 0,
+        };
+
+        await this.contactService.createContact(newContact);
+        return false; // Novo contato criado
+    }    /**
      * Extrai e mapeia as informações principais da mensagem
      */
     private extractMessageInfo(messageData: WebhookMessageData) {
