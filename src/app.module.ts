@@ -10,6 +10,9 @@ import { ContactService } from './services/contact.service';
 import { MessageService } from './services/message.service';
 import { ConversationService } from './services/conversation.service';
 import { ConversationFlowService } from './services/conversation-flow.service';
+import { DebounceService } from './services/debounce.service';
+import { MessageValidationService } from './services/message-validation.service';
+import { GoogleDriveService } from './services/google-drive.service';
 import { Contact } from './entities/contact.entity';
 import { Conversation } from './entities/conversation.entity';
 import { databaseConfig, isDevelopment } from './config/database.config';
@@ -41,6 +44,6 @@ const databaseModule = isDevelopment
     ...databaseModule,
   ],
   controllers: [AppController, WebhookController, MessageController],
-  providers: [AppService, ChatbotService, ContactService, MessageService, ConversationService, ConversationFlowService],
+  providers: [AppService, ChatbotService, ContactService, MessageService, ConversationService, ConversationFlowService, DebounceService, MessageValidationService, GoogleDriveService],
 })
 export class AppModule { }

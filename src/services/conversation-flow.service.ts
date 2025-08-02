@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConversationService } from './conversation.service';
 import { MessageService } from './message.service';
+import { DebounceService } from './debounce.service';
+import { MessageValidationService } from './message-validation.service';
+import { GoogleDriveService } from './google-drive.service';
 import { messagesConfig } from '../config/messages.config';
 
 @Injectable()
@@ -10,7 +13,38 @@ export class ConversationFlowService {
     constructor(
         private readonly conversationService: ConversationService,
         private readonly messageService: MessageService,
+        private readonly debounceService: DebounceService,
+        private readonly messageValidationService: MessageValidationService,
+        private readonly googleDriveService: GoogleDriveService,
     ) { }
+
+    /**
+     * Processa uma mensagem recebida do webhook com debounce
+     */
+    async processWebhookMessage(webhookData: any): Promise<void> {
+        const contactId = webhookData.contactId;
+        const ticketId = webhookData.ticketId;
+
+        // Verificar se é o contato de teste
+        if (contactId !== messagesConfig.testContactId) {
+            this.logger.log(`Mensagem ignorada - contactId ${contactId} não é o contato de teste`);
+            return;
+        }
+
+        this.logger.log(`📨 Mensagem recebida para contactId: ${contactId}`);
+
+        // Aplicar debounce de 3 segundos
+        this.debounceService.debounceMessage(contactId, webhookData, async (debouncedData) => {
+            await this.processUserMessage(
+                debouncedData.contactId,
+                debouncedData.ticketId,
+                debouncedData.contact?.name || 'Cliente',
+                debouncedData.contact?.phone || '',
+                debouncedData.data?.message?.text || '',
+                debouncedData
+            );
+        });
+    }
 
     /**
      * Processa uma mensagem recebida do usuário
@@ -20,16 +54,17 @@ export class ConversationFlowService {
         ticketId: number,
         contactName: string,
         contactPhone: string,
-        userMessage: string
+        userMessage: string,
+        webhookData?: any
     ): Promise<void> {
         try {
-            this.logger.log(`Processando mensagem do usuário: "${userMessage}" para contactId: ${contactId}`);
+            this.logger.log(`🔄 Processando mensagem: "${userMessage}" para contactId: ${contactId}`);
 
             // Busca conversa ativa ou cria uma nova
             let conversation = await this.conversationService.findActiveByContactId(contactId);
 
             if (!conversation) {
-                this.logger.log('Criando nova conversa...');
+                this.logger.log('✨ Criando nova conversa...');
                 conversation = await this.conversationService.createConversation({
                     contactId,
                     ticketId,
@@ -43,11 +78,12 @@ export class ConversationFlowService {
             await this.processMessageForStep(
                 conversation,
                 userMessage.trim(),
-                ticketId
+                ticketId,
+                webhookData
             );
 
         } catch (error) {
-            this.logger.error('Erro ao processar mensagem do usuário:', error);
+            this.logger.error('❌ Erro ao processar mensagem do usuário:', error);
             await this.sendErrorMessage(ticketId);
         }
     }
@@ -58,7 +94,8 @@ export class ConversationFlowService {
     private async processMessageForStep(
         conversation: any,
         userMessage: string,
-        ticketId: number
+        ticketId: number,
+        webhookData?: any
     ): Promise<void> {
         const currentStep = messagesConfig.conversationFlow[conversation.currentStep];
 
@@ -72,35 +109,52 @@ export class ConversationFlowService {
 
         // Se o passo espera texto livre (como nome)
         if (currentStep.expectsText) {
-            await this.handleTextInput(conversation, userMessage, ticketId);
+            await this.handleTextInput(conversation, userMessage, ticketId, webhookData);
             return;
         }
 
         // Se o passo espera arquivo
         if (currentStep.expectsFile) {
-            await this.handleFileInput(conversation, userMessage, ticketId);
+            await this.handleFileInput(conversation, userMessage, ticketId, webhookData);
             return;
         }
 
         // Processa opções numéricas
-        await this.handleNumericOption(conversation, userMessage, ticketId, currentStep);
+        await this.handleNumericOption(conversation, userMessage, ticketId, currentStep, webhookData);
     }
 
     /**
-     * Processa entrada de texto livre (como nome)
+     * Processa entrada de texto livre (como nome) com validação de tipo
      */
     private async handleTextInput(
         conversation: any,
         userMessage: string,
-        ticketId: number
+        ticketId: number,
+        webhookData?: any
     ): Promise<void> {
         const currentStep = messagesConfig.conversationFlow[conversation.currentStep];
 
-        // Verifica se é uma opção especial (0, 10)
+        // Verificar se é uma opção especial primeiro (0, 10)
         if (currentStep.specialActions && currentStep.specialActions[userMessage]) {
             const nextStep = currentStep.specialActions[userMessage];
             await this.goToStep(conversation.contactId, ticketId, nextStep);
             return;
+        }
+
+        // Validar se é texto (tipo chat) - somente para entrada de nome
+        if (webhookData && currentStep.id === 'ask_name_option1') {
+            const validation = this.messageValidationService.validateNameInput(webhookData);
+
+            if (!validation.isValid) {
+                if (validation.shouldRespond) {
+                    // Enviar mensagem de erro apenas uma vez
+                    const errorMessage = this.messageValidationService.getNameValidationErrorMessage();
+                    await this.messageService.sendMessage(ticketId, errorMessage);
+                    this.logger.log(`⚠️ Enviado aviso de tipo inválido para contactId: ${conversation.contactId}`);
+                }
+                // Não processar mais, apenas ignorar
+                return;
+            }
         }
 
         // Se não é uma opção especial, considera como texto do usuário
@@ -130,7 +184,8 @@ export class ConversationFlowService {
     private async handleFileInput(
         conversation: any,
         userMessage: string,
-        ticketId: number
+        ticketId: number,
+        webhookData?: any
     ): Promise<void> {
         const currentStep = messagesConfig.conversationFlow[conversation.currentStep];
 
@@ -156,14 +211,31 @@ export class ConversationFlowService {
     }
 
     /**
-     * Processa opção numérica
+     * Processa opção numérica com validação avançada
      */
     private async handleNumericOption(
         conversation: any,
         userMessage: string,
         ticketId: number,
-        currentStep: any
+        currentStep: any,
+        webhookData?: any
     ): Promise<void> {
+        // Para confirmação de nome, validar tipo de mensagem
+        if (webhookData && currentStep.id === 'confirm_name_option1') {
+            const validation = this.messageValidationService.validateOptionInput(webhookData, currentStep.validOptions);
+
+            if (!validation.isValid) {
+                if (validation.shouldRespond) {
+                    // Enviar mensagem de erro apenas uma vez
+                    const errorMessage = this.messageValidationService.getOptionValidationErrorMessage(currentStep.validOptions);
+                    await this.messageService.sendMessage(ticketId, errorMessage);
+                    this.logger.log(`⚠️ Enviado aviso de opção inválida para contactId: ${conversation.contactId}`);
+                }
+                // Não processar mais, apenas ignorar
+                return;
+            }
+        }
+
         // Verifica se é uma opção válida
         if (currentStep.validOptions && currentStep.validOptions.includes(userMessage)) {
             let nextStep: string | undefined;
@@ -182,6 +254,11 @@ export class ConversationFlowService {
             }
 
             if (nextStep) {
+                // Criar pasta no Google Drive quando confirmar nome (opção 1 no confirm_name_option1)
+                if (currentStep.id === 'confirm_name_option1' && userMessage === '1') {
+                    await this.createClientGoogleDriveFolder(conversation);
+                }
+
                 await this.conversationService.updateConversationStep(
                     conversation.contactId,
                     nextStep,
@@ -278,5 +355,55 @@ export class ConversationFlowService {
 
         await this.conversationService.restartConversation(contactId);
         await this.goToStep(contactId, ticketId, 'welcome');
+    }
+
+    /**
+     * Cria pasta no Google Drive para o cliente
+     */
+    private async createClientGoogleDriveFolder(conversation: any): Promise<void> {
+        try {
+            const clientName = conversation.stepData?.userName || conversation.contactName;
+            const contactId = conversation.contactId;
+
+            this.logger.log(`📁 Tentando criar pasta no Google Drive para: ${clientName} (ID: ${contactId})`);
+
+            if (!this.googleDriveService.isReady()) {
+                this.logger.warn('⚠️ Google Drive não configurado - pasta não será criada');
+                this.logger.log('📋 Configure as credenciais do Google Drive:');
+                this.logger.log(this.googleDriveService.getSetupInstructions());
+                return;
+            }
+
+            const folder = await this.googleDriveService.createClientFolder(
+                clientName,
+                contactId
+            );
+
+            if (folder) {
+                // Salvar informações da pasta no stepData
+                const stepData = conversation.stepData || {};
+                stepData.googleDriveFolder = {
+                    id: folder.id,
+                    name: folder.name,
+                    link: folder.webViewLink,
+                    createdAt: folder.createdTime
+                };
+
+                await this.conversationService.updateConversationStep(
+                    contactId,
+                    conversation.currentStep, // Manter o mesmo step
+                    stepData,
+                    conversation.lastMessage
+                );
+
+                this.logger.log(`✅ Pasta criada com sucesso: ${folder.name}`);
+                this.logger.log(`🔗 Link: ${folder.webViewLink}`);
+            } else {
+                this.logger.error('❌ Falha ao criar pasta no Google Drive');
+            }
+
+        } catch (error) {
+            this.logger.error('❌ Erro ao criar pasta no Google Drive:', error);
+        }
     }
 }
