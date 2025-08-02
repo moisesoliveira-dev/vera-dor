@@ -8,7 +8,10 @@ import { MessageController } from './controllers/message.controller';
 import { ChatbotService } from './services/chatbot.service';
 import { ContactService } from './services/contact.service';
 import { MessageService } from './services/message.service';
+import { ConversationService } from './services/conversation.service';
+import { ConversationFlowService } from './services/conversation-flow.service';
 import { Contact } from './entities/contact.entity';
+import { Conversation } from './entities/conversation.entity';
 import { databaseConfig, isDevelopment } from './config/database.config';
 
 // Configuração condicional baseada no ambiente
@@ -22,11 +25,11 @@ const databaseModule = isDevelopment
       username: databaseConfig.current.username,
       password: databaseConfig.current.password,
       database: databaseConfig.current.database,
-      entities: [Contact],
+      entities: [Contact, Conversation],
       synchronize: false,
       logging: true,
     }),
-    TypeOrmModule.forFeature([Contact]),
+    TypeOrmModule.forFeature([Contact, Conversation]),
   ];
 
 @Module({
@@ -37,6 +40,6 @@ const databaseModule = isDevelopment
     ...databaseModule,
   ],
   controllers: [AppController, WebhookController, MessageController],
-  providers: [AppService, ChatbotService, ContactService, MessageService],
+  providers: [AppService, ChatbotService, ContactService, MessageService, ConversationService, ConversationFlowService],
 })
 export class AppModule { }

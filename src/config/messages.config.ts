@@ -8,56 +8,171 @@ export const messagesConfig = {
     // Contato ID para teste (somente processar este contato durante desenvolvimento)
     testContactId: 24914,
 
-    // Mensagens do sistema (fácil de visualizar e alterar)
-    templates: {
+    // Fluxo de conversação do chatbot
+    conversationFlow: {
         welcome: {
             id: 'welcome',
             title: 'Mensagem de Boas-vindas',
-            message: `🌟 Olá! Seja muito bem-vindo(a) à *Cinthia Moreira Modulados*! 
+            message: `Olá! Seja bem-vindo à Cinthia Moreira Modulados 👋
+Sou a Vera D'Or, sua atendente virtual 🤖✨
+Como posso te ajudar hoje?
 
-Eu sou a *Vera*, sua assistente virtual, e estou aqui para te ajudar a transformar seus sonhos em realidade! ✨
+*1* - 📐 Já tenho o projeto e quero orçar.
+*2* - 📏 Só tenho a planta baixa e quero um projeto.
+*3* - 🚫 Não tenho nem o projeto e nem a planta baixa.
+*4* - 💳 Quero informações sobre forma de pagamento por boleto bancário.
+*5* - 📍 Qual endereço da loja física?
 
-🏠 *Somos especialistas em:*
-• Cozinhas planejadas
-• Dormitórios
-• Banheiros
-• Escritórios
-• Áreas de lazer
-• E muito mais!
-
-💬 *Como posso te ajudar hoje?*
-• Orçamento personalizado
-• Tirar dúvidas sobre nossos produtos
-• Agendar uma visita técnica
-• Conhecer nossos projetos
-
-🕒 *Horário de atendimento:*
-Segunda a Sexta: 08h às 17h
-Sábados: 08h às 12h
-
-Digite sua mensagem que logo um de nossos especialistas irá te atender! 😊`
+👉 Envie o número da opção desejada.`,
+            validOptions: ['1', '2', '3', '4', '5'],
+            nextStep: {
+                '1': 'ask_name_option1',
+                '2': 'option2_flow',
+                '3': 'option3_flow',
+                '4': 'payment_info',
+                '5': 'store_address'
+            }
         },
 
-        outsideHours: {
-            id: 'outsideHours',
-            title: 'Mensagem Fora do Horário',
-            message: `😊 Olá! Como vai? Me chamo Katherinne. E você? 
+        ask_name_option1: {
+            id: 'ask_name_option1',
+            title: 'Solicitar Nome - Opção 1',
+            message: `Antes de prosseguirmos, você pode me informar seu nome, por gentileza? 😊
 
-Que bom te receber à *Cinthia Moreira Modulados*! 
+*0* - ↩️ Voltar uma etapa
+*10* - 🔄 Recomeçar o atendimento`,
+            validOptions: ['0', '10'],
+            expectsText: true, // Espera texto livre (nome)
+            nextStep: 'confirm_name_option1',
+            specialActions: {
+                '0': 'welcome',
+                '10': 'welcome'
+            }
+        },
 
-🕒 Nosso horário de funcionamento é:
-• *Segunda à Sexta:* das 08h às 17h
-• *Sábados:* das 08h às 12h
+        confirm_name_option1: {
+            id: 'confirm_name_option1',
+            title: 'Confirmar Nome - Opção 1',
+            message: `Só confirmando, seu nome é [nome], certo? 😊
 
-Deixe sua mensagem que nós retornaremos em breve! E desde já, obrigada por sua paciência 🤗.`
+*1* - Sim
+*2* - Não
+
+*10* - 🔄 Recomeçar o atendimento
+
+� Envie o número da opção desejada.`,
+            validOptions: ['1', '2', '10'],
+            nextStep: {
+                '1': 'request_project_option1',
+                '2': 'ask_name_option1',
+                '10': 'welcome'
+            }
+        },
+
+        request_project_option1: {
+            id: 'request_project_option1',
+            title: 'Solicitar Projeto - Opção 1',
+            message: `📎 Pode enviar o projeto aqui mesmo.
+Pode ser em PDF, imagem ou qualquer outro formato que você tiver.
+
+👋🛠 Assim que recebermos, um atendente humano vai te chamar por aqui para dar sequência na criação do seu projeto. ✨
+
+Estamos animados para te ajudar a transformar seu ambiente! 🏡
+
+*0* - ↩️ Voltar uma etapa
+*10* - 🔄 Recomeçar o atendimento`,
+            validOptions: ['0', '10'],
+            expectsFile: true, // Espera arquivo
+            nextStep: 'transfer_to_human_option1',
+            specialActions: {
+                '0': 'confirm_name_option1',
+                '10': 'welcome'
+            }
+        },
+
+        transfer_to_human_option1: {
+            id: 'transfer_to_human_option1',
+            title: 'Transferir para Humano - Opção 1',
+            message: `✅ Tudo certo por aqui!
+Agora vou te encaminhar para o nosso time de Projetistas 💼, que vai continuar te atendendo com toda atenção e carinho. 💖
+
+Aguarde só um instante, [nome]… já estou lhe redirecionando! �`,
+            isTransferStep: true,
+            isEndStep: true
+        },
+
+        // Placeholders para outras opções (implementar depois)
+        option2_flow: {
+            id: 'option2_flow',
+            title: 'Opção 2 - Em desenvolvimento',
+            message: `Esta opção ainda está em desenvolvimento.
+
+*0* - ↩️ Voltar uma etapa
+*10* - 🔄 Recomeçar o atendimento`,
+            validOptions: ['0', '10'],
+            nextStep: {
+                '0': 'welcome',
+                '10': 'welcome'
+            }
+        },
+
+        option3_flow: {
+            id: 'option3_flow',
+            title: 'Opção 3 - Em desenvolvimento',
+            message: `Esta opção ainda está em desenvolvimento.
+
+*0* - ↩️ Voltar uma etapa
+*10* - 🔄 Recomeçar o atendimento`,
+            validOptions: ['0', '10'],
+            nextStep: {
+                '0': 'welcome',
+                '10': 'welcome'
+            }
+        },
+
+        payment_info: {
+            id: 'payment_info',
+            title: 'Informações de Pagamento',
+            message: `Esta opção ainda está em desenvolvimento.
+
+*0* - ↩️ Voltar uma etapa
+*10* - 🔄 Recomeçar o atendimento`,
+            validOptions: ['0', '10'],
+            nextStep: {
+                '0': 'welcome',
+                '10': 'welcome'
+            }
+        },
+
+        store_address: {
+            id: 'store_address',
+            title: 'Endereço da Loja',
+            message: `Esta opção ainda está em desenvolvimento.
+
+*0* - ↩️ Voltar uma etapa
+*10* - 🔄 Recomeçar o atendimento`,
+            validOptions: ['0', '10'],
+            nextStep: {
+                '0': 'welcome',
+                '10': 'welcome'
+            }
+        }
+    },
+
+    // Mensagens de erro e sistema
+    systemMessages: {
+        invalidOption: {
+            message: `❌ Opção inválida. Por favor, escolha uma das opções disponíveis.
+
+*10* - 🔄 Recomeçar o atendimento`
         },
 
         error: {
-            id: 'error',
-            title: 'Mensagem de Erro',
             message: `😔 Ops! Parece que houve um problema técnico. 
 
 Por favor, tente novamente em alguns instantes ou entre em contato conosco através do telefone **(92) 94551-471**.
+
+*10* - 🔄 Recomeçar o atendimento
 
 Pedimos desculpas pelo inconveniente! 🙏`
         }

@@ -44,7 +44,7 @@ export class MessageService {
      * Envia mensagem de boas-vindas
      */
     async sendWelcomeMessage(ticketId: number): Promise<boolean> {
-        const template = messagesConfig.templates.welcome;
+        const template = messagesConfig.conversationFlow.welcome;
         this.logger.log(`Enviando mensagem de boas-vindas (${template.title}) para ticket ${ticketId}`);
         return this.sendMessage(ticketId, template.message);
     }
@@ -53,25 +53,25 @@ export class MessageService {
      * Envia mensagem fora do horário
      */
     async sendOutsideHoursMessage(ticketId: number): Promise<boolean> {
-        const template = messagesConfig.templates.outsideHours;
-        this.logger.log(`Enviando mensagem fora do horário (${template.title}) para ticket ${ticketId}`);
-        return this.sendMessage(ticketId, template.message);
+        const errorMessage = messagesConfig.systemMessages.error.message;
+        this.logger.log(`Enviando mensagem de erro para ticket ${ticketId}`);
+        return this.sendMessage(ticketId, errorMessage);
     }
 
     /**
      * Envia mensagem de erro
      */
     async sendErrorMessage(ticketId: number): Promise<boolean> {
-        const template = messagesConfig.templates.error;
-        this.logger.log(`Enviando mensagem de erro (${template.title}) para ticket ${ticketId}`);
-        return this.sendMessage(ticketId, template.message);
+        const errorMessage = messagesConfig.systemMessages.error.message;
+        this.logger.log(`Enviando mensagem de erro para ticket ${ticketId}`);
+        return this.sendMessage(ticketId, errorMessage);
     }
 
     /**
      * Lista todas as mensagens disponíveis (para facilitar visualização)
      */
     getAvailableMessages() {
-        return Object.entries(messagesConfig.templates).map(([key, template]) => ({
+        return Object.entries(messagesConfig.conversationFlow).map(([key, template]) => ({
             id: template.id,
             title: template.title,
             preview: template.message.substring(0, 100) + '...',
@@ -84,7 +84,7 @@ export class MessageService {
      */
     updateMessage(messageId: string, newContent: string): boolean {
         try {
-            const template = Object.values(messagesConfig.templates).find(t => t.id === messageId);
+            const template = Object.values(messagesConfig.conversationFlow).find(t => t.id === messageId);
             if (template) {
                 template.message = newContent;
                 this.logger.log(`Mensagem ${messageId} atualizada com sucesso`);
