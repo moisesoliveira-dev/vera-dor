@@ -26,8 +26,9 @@ const databaseModule = isDevelopment
       password: databaseConfig.current.password,
       database: databaseConfig.current.database,
       entities: [Contact, Conversation],
-      synchronize: false,
-      logging: true,
+      synchronize: true, // Criar tabelas automaticamente em produção
+      logging: false, // Desabilitar logs em produção
+      ssl: process.env.NODE_ENV === 'production', // SSL em produção
     }),
     TypeOrmModule.forFeature([Contact, Conversation]),
   ];

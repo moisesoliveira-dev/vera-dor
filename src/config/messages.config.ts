@@ -27,9 +27,9 @@ Como posso te ajudar hoje?
             validOptions: ['1', '2', '3', '4', '5'],
             nextStep: {
                 '1': 'ask_name_option1',
-                '2': 'option2_flow',
-                '3': 'option3_flow',
-                '4': 'payment_info',
+                '2': 'confirm_name_option1',
+                '3': 'request_project_option1',
+                '4': 'transfer_to_human_option1',
                 '5': 'store_address'
             }
         },
